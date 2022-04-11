@@ -1,0 +1,25 @@
+FROM ubuntu:latest
+
+RUN apt-get update && apt-get install -y \
+  curl \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+
+RUN apt-get update && apt-get install -y nodejs \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 1000 node \
+  && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
+
+WORKDIR /app
+
+COPY . /app
+
+RUN npm install
+
+EXPOSE 3000
+
+USER node
+
+CMD ["node", "app.js"]
