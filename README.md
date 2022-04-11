@@ -116,6 +116,8 @@ docker kill <container id>
 
 ## Task 3
 
+In this task, we will create a more complex application composed of multiple services. We will build a real-time chat application, which is able to persist messages into a [MongoDB](https://www.mongodb.com/) database instance, which can send real-time updates to clients, and which can query a dice roll service to get random numbers through the virtual network.
+
 ### Dice roll microservice
 
 Go back to the folder you first created, e.g. `~/Documents/lauzhack-docker-workshop` and create a new directory named `diceroll` and access inside of it:
@@ -179,4 +181,197 @@ USER node
 CMD ["node", "app.js"]
 ```
 
-### Chat app
+### Chat application
+
+Go back to the folder you first created, e.g. `~/Documents/lauzhack-docker-workshop` and create a new directory named `chat` and access inside of it:
+
+```bash
+cd ~/Documents/lauzhack-docker-workshop
+mkdir chat
+cd chat
+```
+
+We will create yet another microservice for the main chat application:
+
+```
+npm init
+npm install express bulma socket.io mongodb cross-fetch
+```
+
+Create a new file `app.js` and copy the following content:
+
+```js
+const express = require('express')
+const http = require('http')
+const Socket = require('socket.io').Server
+const { MongoClient } = require('mongodb')
+const fetch = require('cross-fetch')
+
+const app = express()
+const server = http.createServer(app)
+const socket = new Socket(server)
+
+const MONGO_URI = "mongodb://root:example@mongodb:27017?maxPoolSize=20&w=majority"
+const db = new MongoClient(MONGO_URI)
+
+const DICEROLL_URI = "http://diceroll:3001/"
+
+const port = 3002
+
+app.use('/static', express.static('node_modules/bulma/css'))
+app.use('/static', express.static('node_modules/socket.io/client-dist'))
+
+app.get('/', (req, res) => {
+    res.send(`
+        <html>
+            <head>
+                <link rel="stylesheet" href="/static/bulma.min.css">
+                <title>Chat app</title>
+                <script src="/static/socket.io.min.js"></script>
+                <script>
+                    const socket = io()
+                    function usernameInput() {
+                        return document.getElementById("username")
+                    }
+                    function messageInput() {
+                        return document.getElementById("message")
+                    }
+                    function onSubmit(event) {
+                        event.preventDefault()
+                        const username = usernameInput()
+                        const message = messageInput()
+                        if (username.value && message.value)
+                            socket.emit("message", { user: username.value, msg: message.value })
+                        message.value = ""
+                        return false
+                    }
+    
+                    socket.on('chat', (data) => {
+                        document.getElementById("messages").insertAdjacentHTML("afterbegin",\`
+                            <div class="box">
+                                <article class="media">
+                                <div class="media-content">
+                                    <div class="content">
+                                    <p>
+                                        <strong>\$\{data.user\}</strong> <small>\$\{(new Date(data.time)).toLocaleTimeString()\}</small>
+                                        <br>
+                                        \$\{data.msg\}
+                                    </p>
+                                    </div>
+                                </div>
+                                </article>
+                            </div>
+                        \`)
+                    })
+                </script>
+            </head>
+            <body style="padding:20px">
+                <div id="form">
+                    <form class="box" action="" onsubmit="onSubmit(event)">
+                    <div class="field">
+                        <label class="label">User name</label>
+                        <div class="control">
+                            <input class="input" type="text" id="username">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Message</label>
+                        <div class="control">
+                            <input class="input" type="text" id="message">
+                        </div>
+                    </div>
+
+                    <button class="button is-primary">Send</button>
+                    </form>
+                </div>
+                <div id="messages"></div>
+            </body>
+        </html>
+    `)
+})
+
+socket.on('connection', (client) => {
+    console.log('New user connected')
+    client.on('disconnect', () => {
+        console.log('User disconnected')
+    })
+
+    db.db("chat").collection("messages").find({}).forEach(doc => {
+        client.emit('chat', doc)
+    })
+
+    client.on('message', (data) => {
+        console.log(JSON.stringify(data))
+
+        const { user, msg } = data
+        const time = Date.now()
+        const out = { user, msg, time }
+
+        if (msg === "/diceroll") {
+            fetch(DICEROLL_URI)
+                .then(res => {
+                    if (res.status >= 400) throw new Error("Bad response from diceroll server")
+                    return res.json()
+                })
+                .then(data => {
+                    const number = data.value
+                    socket.emit('chat', { user: "System", msg: `${user} requested a dice roll: ${number}`, time })
+                })
+                .catch(console.err)
+        } else {
+            socket.emit('chat', out)
+            db.db("chat").collection("messages").insertOne(out).catch(console.err)
+        }
+    })
+})
+
+db.connect()
+    .then(() => db.db("admin").command({ ping: 1 }))
+    .then(() => {
+        console.log("Database connected")
+        server.listen(port, () => {
+            console.log(`Chat server listening on port ${port}`)
+        })
+    })
+    .catch(console.error)
+```
+
+You will however not be able to run it directly, as this code will attempt to connect to a MongoDB server instance and fail.
+
+Add a `Dockerfile` and copy the following contents:
+
+```Dockerfile
+FROM node:lts-alpine
+
+WORKDIR /app
+
+COPY . /app
+
+RUN npm install
+
+EXPOSE 3002
+
+USER node
+
+CMD ["node", "app.js"]
+```
+
+### Compose everything together
+
+In the parent directory of the chat and diceroll services, create a new file named `docker-compose.yml`. Have a look at the [Compose specification reference](https://docs.docker.com/compose/compose-file/) for examples and syntax.
+
+It should define a services section with 3 containers:
+
+- the chat application, which should be built from its Dockerfile and which needs to export a public port (e.g. 3002)
+- the dice roll microservice, which should be built from its Dockerfile. The chat application expects the service to be named `diceroll`, and will connect to its default port 3001.
+- a MongoDB instance, which should be pulled from the `mongo` image. The chat application expects the service to be named `mongodb`, with root username `root` and password `example`.
+- optionally, you can add a `mongo-express` instance, which will help you debug the contents of the database
+
+It should define a volumes section with a volume dedicated to the persistent data of the Mongo database, such that data is not lost across application restarts. The volume should be bound to the MongoDB container.
+
+### Level up
+
+- Connect all the computers from a small group of people to the same local area network (e.g. by using the "4G modem" functionality of a smartphone for instance). Boot up the server stack from one computer, find out its local IP address: all computers should be able to access the web interface through the local IP - chat port pair, and you should be able to chat together.
+
+- Modify the code and the docker-compose file such that all environment configuration (such as host names, ports, passwords, ...) are passed as environment variables (for instance, directly through the docker-compose file).
