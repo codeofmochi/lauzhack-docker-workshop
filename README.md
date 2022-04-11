@@ -23,7 +23,7 @@ Inspired by https://github.com/ageapps/lauzhack-docker-workshop
 
 ## Task 1
 
-In this task, we will write a simple web server using [ExpressJS](https://expressjs.com/), a popular web framework library.
+In this task, we will write a simple web server using [ExpressJS](https://expressjs.com/), a popular web framework library. We will simply display a Hello World message to visitors.
 
 ```bash
 mkdir express-web-server
@@ -44,7 +44,28 @@ npm install express
 
 You should now see a "node_modules" folder, a "package.json" file and a "package-lock.json" file in your folder. These files contain all the dependencies of your software.
 
-Create a new file named `app.js` and follow the tutorial at [https://expressjs.com/en/starter/hello-world.html](https://expressjs.com/en/starter/hello-world.html).
+Create a new file named `app.js` copy the following web server code:
+
+```js
+// import and initialize dependencies
+const express = require('express')
+const app = express()
+
+const port = 3000
+
+// define a text "Hello World!" response on the root GET route
+// i.e. when a client performs a request to http://<hostname>:3000
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+})
+
+// wait for requests indefinitely
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`)
+})
+```
+
+That's it! You now have a working web server.
 
 Once this is complete, you should be able to run and access your web server with:
 
