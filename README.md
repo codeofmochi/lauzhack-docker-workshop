@@ -164,10 +164,12 @@ const app = express()
 const port = 3001
 
 function rollDice() {
+    // random integer between 1 and 6
     return Math.floor(Math.random() * 6) + 1;
 }
 
 app.get('/', (req, res) => {
+  // return the value as structured JSON
   res.json({ value: rollDice() })
 })
 
@@ -219,9 +221,12 @@ npm init
 npm install express bulma socket.io mongodb cross-fetch
 ```
 
+We use `bulma` as CSS library to style our front-end, `socket.io` to provide real-time communication (using websockets or polling), `mongodb` as our database driver and `cross-fetch` to perform HTTP requests from the NodeJS process directly.
+
 Create a new file `app.js` and copy the following content:
 
 ```js
+// import and initialize dependencies
 const express = require('express')
 const http = require('http')
 const Socket = require('socket.io').Server
@@ -232,16 +237,20 @@ const app = express()
 const server = http.createServer(app)
 const socket = new Socket(server)
 
+// URI of other services (database, dice roll)
 const MONGO_URI = "mongodb://root:example@mongodb:27017?maxPoolSize=20&w=majority"
-const db = new MongoClient(MONGO_URI)
-
 const DICEROLL_URI = "http://diceroll:3001/"
+
+// initialize database client
+const db = new MongoClient(MONGO_URI)
 
 const port = 3002
 
+// expose client front-end libraries for browsers
 app.use('/static', express.static('node_modules/bulma/css'))
 app.use('/static', express.static('node_modules/socket.io/client-dist'))
 
+// main route will send the pretty HTML + front-end JS app
 app.get('/', (req, res) => {
     res.send(`
         <html>
@@ -312,16 +321,21 @@ app.get('/', (req, res) => {
     `)
 })
 
+// hook triggered when socket.io sees a new client
 socket.on('connection', (client) => {
     console.log('New user connected')
+
+    // hook triggered when client disconnects
     client.on('disconnect', () => {
         console.log('User disconnected')
     })
 
+    // on first connection, send all past messages
     db.db("chat").collection("messages").find({}).forEach(doc => {
         client.emit('chat', doc)
     })
 
+    // hook triggered when a client sends something through socket.io
     client.on('message', (data) => {
         console.log(JSON.stringify(data))
 
@@ -329,6 +343,7 @@ socket.on('connection', (client) => {
         const time = Date.now()
         const out = { user, msg, time }
 
+        // if the message is "/diceroll", make a request to the service
         if (msg === "/diceroll") {
             fetch(DICEROLL_URI)
                 .then(res => {
@@ -337,24 +352,30 @@ socket.on('connection', (client) => {
                 })
                 .then(data => {
                     const number = data.value
+                    // send the dice roll value as system message
                     socket.emit('chat', { user: "System", msg: `${user} requested a dice roll: ${number}`, time })
                 })
                 .catch(console.err)
         } else {
+            // otherwise just broadcast the message to everyone
             socket.emit('chat', out)
+            // and store it in database
             db.db("chat").collection("messages").insertOne(out).catch(console.err)
         }
     })
 })
 
+// try to connect to DB first
 db.connect()
     .then(() => db.db("admin").command({ ping: 1 }))
     .then(() => {
         console.log("Database connected")
+        // if DB is up, then listen for requests indefinitely
         server.listen(port, () => {
             console.log(`Chat server listening on port ${port}`)
         })
     })
+    // otherwise just die
     .catch(console.error)
 ```
 
