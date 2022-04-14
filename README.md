@@ -1,4 +1,4 @@
-# lauzhack-docker-workshop
+# lauzhack-docker-workshop, [SLIDES](https://docs.google.com/presentation/d/1S3Hl0Cys4M6kgHwbLlL17OS-Ua1Q7rSz1b6Yobvl2zg/edit?usp=sharing) and [RECORDING](https://drive.google.com/file/d/1shv_HpoJCzm8LO9MrEANkTuStWD5wUqT/view?usp=sharing)
 
 Materials for the LauzHack Days workshop on "Intro to Docker" (April 11, 2022)
 
